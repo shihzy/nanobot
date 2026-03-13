@@ -29,6 +29,8 @@ export interface InboundMessage {
   content: string;
   timestamp: number;
   isGroup: boolean;
+  participant?: string;    // For group messages: the actual sender's JID
+  mentionedIds?: string[]; // JIDs mentioned in the message
   media?: string[];
 }
 
@@ -145,6 +147,8 @@ export class WhatsAppClient {
         if (!finalContent && mediaPaths.length === 0) continue;
 
         const isGroup = msg.key.remoteJid?.endsWith('@g.us') || false;
+        const participant = isGroup ? (msg.key.participant || '') : '';
+        const mentionedIds = unwrapped.extendedTextMessage?.contextInfo?.mentionedJid || [];
 
         this.options.onMessage({
           id: msg.key.id || '',
@@ -153,6 +157,8 @@ export class WhatsAppClient {
           content: finalContent,
           timestamp: msg.messageTimestamp as number,
           isGroup,
+          ...(participant ? { participant } : {}),
+          ...(mentionedIds.length > 0 ? { mentionedIds } : {}),
           ...(mediaPaths.length > 0 ? { media: mediaPaths } : {}),
         });
       }

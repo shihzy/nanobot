@@ -112,6 +112,11 @@ class WhatsAppChannel(BaseChannel):
             sender = data.get("sender", "")
             content = data.get("content", "")
             message_id = data.get("id", "")
+            is_group = data.get("isGroup", False)
+            # For group messages: actual sender JID (e.g. "15125659580@s.whatsapp.net")
+            participant = data.get("participant", "")
+            # JIDs mentioned in the message
+            mentioned_ids = data.get("mentionedIds", [])
 
             if message_id:
                 if message_id in self._processed_message_ids:
@@ -120,10 +125,13 @@ class WhatsAppChannel(BaseChannel):
                 while len(self._processed_message_ids) > 1000:
                     self._processed_message_ids.popitem(last=False)
 
-            # Extract just the phone number or lid as chat_id
-            user_id = pn if pn else sender
-            sender_id = user_id.split("@")[0] if "@" in user_id else user_id
-            logger.info("Sender {}", sender)
+            if is_group and participant:
+                # Use the actual sender (participant) for groups, not the group JID
+                sender_id = participant.split("@")[0]
+            else:
+                user_id = pn if pn else sender
+                sender_id = user_id.split("@")[0] if "@" in user_id else user_id
+            logger.info("Sender {} (participant={})", sender, participant or "n/a")
 
             # Handle voice transcription if it's a voice message
             if content == "[Voice Message]":
@@ -143,13 +151,16 @@ class WhatsAppChannel(BaseChannel):
 
             await self._handle_message(
                 sender_id=sender_id,
-                chat_id=sender,  # Use full LID for replies
+                chat_id=sender,  # Use full LID/group JID for replies
                 content=content,
                 media=media_paths,
                 metadata={
                     "message_id": message_id,
                     "timestamp": data.get("timestamp"),
-                    "is_group": data.get("isGroup", False)
+                    "is_group": is_group,
+                    "participant": participant,
+                    "mentioned_ids": mentioned_ids,
+                    "pn": pn,
                 }
             )
 

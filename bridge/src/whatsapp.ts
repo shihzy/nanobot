@@ -29,6 +29,7 @@ export interface InboundMessage {
   content: string;
   timestamp: number;
   isGroup: boolean;
+  push_name?: string;      // Sender's WhatsApp display name
   participant?: string;    // For group messages: the actual sender's JID
   mentionedIds?: string[]; // JIDs mentioned in the message
   media?: string[];
@@ -154,6 +155,7 @@ export class WhatsAppClient {
           id: msg.key.id || '',
           sender: msg.key.remoteJid || '',
           pn: msg.key.remoteJidAlt || '',
+          push_name: msg.pushName || '',
           content: finalContent,
           timestamp: msg.messageTimestamp as number,
           isGroup,

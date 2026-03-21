@@ -3,6 +3,7 @@
 import asyncio
 import json
 import mimetypes
+import uuid
 from collections import OrderedDict
 
 from loguru import logger
@@ -30,6 +31,7 @@ class WhatsAppChannel(BaseChannel):
         self._ws = None
         self._connected = False
         self._processed_message_ids: OrderedDict[str, None] = OrderedDict()
+        self._pending_requests: dict[str, asyncio.Future] = {}
 
     async def start(self) -> None:
         """Start the WhatsApp channel by connecting to the bridge."""
@@ -93,6 +95,25 @@ class WhatsAppChannel(BaseChannel):
             await self._ws.send(json.dumps(payload, ensure_ascii=False))
         except Exception as e:
             logger.error("Error sending WhatsApp message: {}", e)
+
+    async def get_group_participants(self, chat_id: str) -> list[dict]:
+        """Fetch all group members from the bridge. Returns list of {id, isAdmin}."""
+        if not self._ws or not self._connected:
+            raise RuntimeError("WhatsApp bridge not connected")
+        request_id = str(uuid.uuid4())
+        loop = asyncio.get_event_loop()
+        fut: asyncio.Future = loop.create_future()
+        self._pending_requests[request_id] = fut
+        await self._ws.send(json.dumps({
+            "type": "get_group_participants",
+            "chat_id": chat_id,
+            "request_id": request_id,
+        }))
+        try:
+            return await asyncio.wait_for(fut, timeout=5.0)
+        except asyncio.TimeoutError:
+            self._pending_requests.pop(request_id, None)
+            raise
 
     async def _handle_bridge_message(self, raw: str) -> None:
         """Handle a message from the bridge."""
@@ -177,6 +198,13 @@ class WhatsAppChannel(BaseChannel):
         elif msg_type == "qr":
             # QR code for authentication
             logger.info("Scan QR code in the bridge terminal to connect WhatsApp")
+
+        elif msg_type == "group_participants":
+            request_id = data.get("request_id", "")
+            if request_id in self._pending_requests:
+                fut = self._pending_requests.pop(request_id)
+                if not fut.done():
+                    fut.set_result(data.get("participants", []))
 
         elif msg_type == "error":
             logger.error("WhatsApp bridge error: {}", data.get('error'))

@@ -230,6 +230,17 @@ export class WhatsAppClient {
     return null;
   }
 
+  async getGroupParticipants(jid: string): Promise<Array<{id: string, isAdmin: boolean}>> {
+    if (!this.sock) {
+      throw new Error('Not connected');
+    }
+    const metadata = await this.sock.groupMetadata(jid);
+    return metadata.participants.map((p: any) => ({
+      id: p.id,
+      isAdmin: p.admin === 'admin' || p.admin === 'superadmin',
+    }));
+  }
+
   async sendMessage(to: string, text: string): Promise<void> {
     if (!this.sock) {
       throw new Error('Not connected');

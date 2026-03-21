@@ -12,8 +12,16 @@ interface SendCommand {
   text: string;
 }
 
+interface GetGroupParticipantsCommand {
+  type: 'get_group_participants';
+  chat_id: string;
+  request_id: string;
+}
+
+type AnyCommand = SendCommand | GetGroupParticipantsCommand;
+
 interface BridgeMessage {
-  type: 'message' | 'status' | 'qr' | 'error';
+  type: 'message' | 'status' | 'qr' | 'error' | 'sent' | 'group_participants';
   [key: string]: unknown;
 }
 
@@ -72,9 +80,9 @@ export class BridgeServer {
 
     ws.on('message', async (data) => {
       try {
-        const cmd = JSON.parse(data.toString()) as SendCommand;
-        await this.handleCommand(cmd);
-        ws.send(JSON.stringify({ type: 'sent', to: cmd.to }));
+        const cmd = JSON.parse(data.toString()) as AnyCommand;
+        const response = await this.handleCommand(cmd);
+        ws.send(JSON.stringify(response));
       } catch (error) {
         console.error('Error handling command:', error);
         ws.send(JSON.stringify({ type: 'error', error: String(error) }));
@@ -92,10 +100,15 @@ export class BridgeServer {
     });
   }
 
-  private async handleCommand(cmd: SendCommand): Promise<void> {
+  private async handleCommand(cmd: AnyCommand): Promise<BridgeMessage> {
     if (cmd.type === 'send' && this.wa) {
       await this.wa.sendMessage(cmd.to, cmd.text);
+      return { type: 'sent', to: cmd.to };
+    } else if (cmd.type === 'get_group_participants' && this.wa) {
+      const participants = await this.wa.getGroupParticipants(cmd.chat_id);
+      return { type: 'group_participants', request_id: cmd.request_id, participants };
     }
+    return { type: 'error', error: 'Unknown command' };
   }
 
   private broadcast(msg: BridgeMessage): void {

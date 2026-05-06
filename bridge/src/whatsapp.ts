@@ -46,6 +46,7 @@ export class WhatsAppClient {
   private sock: any = null;
   private options: WhatsAppClientOptions;
   private reconnecting = false;
+  private pairingRequested = false;
 
   constructor(options: WhatsAppClientOptions) {
     this.options = options;
@@ -77,6 +78,22 @@ export class WhatsAppClient {
       this.sock.ws.on('error', (err: Error) => {
         console.error('WebSocket error:', err.message);
       });
+    }
+
+    // Pairing code flow — set PAIRING_PHONE=<digits, no +> to use instead of QR
+    const pairingPhone = process.env.PAIRING_PHONE;
+    if (pairingPhone && !this.pairingRequested && !this.sock.authState.creds.registered && !this.sock.authState.creds.me) {
+      this.pairingRequested = true;
+      setTimeout(async () => {
+        try {
+          const code = await this.sock!.requestPairingCode(pairingPhone);
+          const formatted = code.match(/.{1,4}/g)?.join('-') || code;
+          console.log('\n🔢 Pairing code: ' + formatted);
+          console.log('   On the bot phone: WhatsApp → Settings → Linked Devices → Link a Device → Link with phone number\n');
+        } catch (err: any) {
+          console.error('Failed to request pairing code:', err.message);
+        }
+      }, 3000);
     }
 
     // Handle connection updates
